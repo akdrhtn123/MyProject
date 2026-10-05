@@ -101,7 +101,7 @@ flowchart TB
 
 | | 개발 서버 | docker compose | kind (쿠버네티스) |
 | --- | --- | --- | --- |
-| 용도 | 평소 개발 | 이미지 확인 · 서버 1대 배포 | 쿠버네티스 학습 |
+| 용도 | 평소 개발 | 이미지 확인 · 서버 1대 배포 | 쿠버네티스 배포 (로컬 kind, 같은 base 로 실제 클러스터) |
 | 켜기 | `./start.sh` | `docker compose up -d --build` | `./k8s/up.sh` |
 | 끄기 | `./stop.sh` | `docker compose down` | `./k8s/down.sh` (삭제) |
 | 잠깐 멈춤 | — | `docker compose stop` | `docker stop myproject-control-plane myproject-worker myproject-worker2` |
@@ -200,7 +200,27 @@ k8s/
 └── down.sh                  클러스터 삭제
 ```
 
-## 5. 다음 단계
+## 5. CPU · 메모리 권장치
+
+실사용 전이라 2026-10-05 에 docker compose 로 띄워 잰 값(대기, 화면·API 요청 60회 직후)을 기준으로 잡았다.
+LLM 은 외부 API 라 CPU 는 거의 안 쓰고, 메모리는 동시 대화(SSE) 수와 MCP 도구에 따라 늘어난다.
+
+| 컨테이너 | 측정 · 대기 | 측정 · 요청 직후 | 권장 requests | 권장 limits |
+| --- | --- | --- | --- | --- |
+| be | 163 MiB · CPU 0.2% | 168 MiB | CPU 100m · 256Mi | 메모리 1Gi |
+| fe | 34 MiB · CPU 0% | 88 MiB | CPU 50m · 128Mi | 메모리 512Mi |
+| postgres | 40 MiB · CPU 0.1% | 47 MiB | CPU 100m · 256Mi | 메모리 512Mi |
+
+| 실행 환경 | 최소 | 권장 | 근거 |
+| --- | --- | --- | --- |
+| docker compose 서버 | 1 vCPU · 2GB | 2 vCPU · 4GB | 앱 3개 합계 약 300MB + OS. 이미지 빌드(Next.js)는 CI·로컬에서 |
+| Kubernetes (kind 로컬) | 2 코어 · 4GB | 4 코어 · 8GB | 노드 3대의 쿠버네티스 구성요소가 앱보다 더 쓴다 |
+| 실제 클러스터 | — | — | 노드 크기는 클러스터 정책을 따르고, 위 requests · limits 를 그대로 쓴다 |
+
+CPU limit 은 두지 않는다 (순간 부하에 스로틀링 방지). 메모리 limit 만 둬서 누수가 노드 전체로 번지지 않게 한다.
+실사용이 쌓이면 `kubectl top pod` · `docker stats` 로 다시 재서 `k8s/base/*.yaml` 의 값을 고친다.
+
+## 6. 다음 단계
 
 - **Gateway API**: `localhost` 하나에서 `/api/v1` → be, 나머지 → fe 로 나눠 보내기 (ingress-nginx 는 2026-03 개발 종료)
 - **마이그레이션 Job**: be 를 여러 개로 늘려도 마이그레이션이 한 번만 돌게 분리

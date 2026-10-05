@@ -42,9 +42,10 @@ docker compose down           # 종료 (데이터는 postgres-data 볼륨에 남
 - `./start.sh` 개발 서버와 동시에 띄우면 포트가 겹친다. `.env` 의 `BE_PORT`·`FE_PORT` 를 바꾼다.
 - 로그인 쿠키는 운영 모드에서 `Secure` 라서, localhost 가 아닌 서버에 올릴 때는 HTTPS 가 필요하다.
 
-## 쿠버네티스 (로컬 kind 클러스터, 학습용)
+## 쿠버네티스 (kind 로컬 클러스터)
 
-내 PC 의 Docker 위에 노드 3대(control-plane 1 + worker 2)짜리 클러스터를 띄운다. 외부 서버·레지스트리는 쓰지 않는다.
+쿠버네티스 배포 구성. `k8s/base` 는 클러스터에 묶이지 않은 공통 매니페스트이고, `overlays/local` 은 내 PC 의 kind 클러스터(노드 3대)용 설정이다.
+실제 클러스터에 올릴 때는 같은 base 에 그 환경용 overlay(이미지 레지스트리, 도메인, 스토리지, 비밀값)를 추가한다.
 
 ```bash
 ./k8s/up.sh     # 클러스터 생성(없으면) → 이미지 빌드·반입 → 배포 → http://localhost
