@@ -1,0 +1,13 @@
+# 내부에 배치되는 프로젝트 저장소 — 워크스페이스는 추적하지 않는다 (각자 독립 git 저장소)
+/BE-Agent/
+/FE-Agent/
+
+# start.sh 가 만드는 실행 상태·로그 (산출물 — 커밋 금지)
+/.run/
+/logs/
+*.log
+
+# AI 도구·IDE 로컬 설정
+.claude/settings.local.json
+.idea/
+.vscode/
