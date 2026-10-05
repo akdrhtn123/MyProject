@@ -1,0 +1,16 @@
+# 로컬 학습용 kind 클러스터: control-plane 1 + worker 2
+# NodePort 는 모든 노드에서 응답하므로 control-plane 의 포트만 호스트에 연결하면 된다.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: myproject
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080 # fe (NodePort)
+        hostPort: 80
+        listenAddress: "127.0.0.1"
+      - containerPort: 30081 # be (NodePort)
+        hostPort: 8000
+        listenAddress: "127.0.0.1"
+  - role: worker
+  - role: worker

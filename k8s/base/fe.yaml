@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fe
+  template:
+    metadata:
+      labels:
+        app: fe
+    spec:
+      containers:
+        - name: fe
+          image: myproject/fe
+          ports:
+            - containerPort: 3000
+          env:
+            # 서버(BFF)가 클러스터 내부 DNS 로 백엔드를 부른다
+            - name: BACKEND_URL
+              value: http://be:8000
+          readinessProbe:
+            httpGet: { path: /login, port: 3000 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /login, port: 3000 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fe
+spec:
+  selector:
+    app: fe
+  ports:
+    - port: 3000
+      targetPort: 3000

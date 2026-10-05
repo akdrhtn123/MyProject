@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: be
+spec:
+  # 시작할 때 DB 마이그레이션을 돌리므로 처음 배포는 1개로. 늘리는 건 배포가 끝난 뒤에
+  replicas: 1
+  selector:
+    matchLabels:
+      app: be
+  template:
+    metadata:
+      labels:
+        app: be
+    spec:
+      # k8s 에는 depends_on 이 없다. DB 가 받을 준비가 될 때까지 기다렸다가 앱을 띄운다
+      initContainers:
+        - name: wait-postgres
+          image: postgres:17
+          command: ["sh", "-c", "until pg_isready -h postgres -U agent; do sleep 2; done"]
+      containers:
+        - name: be
+          image: myproject/be
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: be-config
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: app-secrets, key: POSTGRES_PASSWORD }
+            # $(VAR) 는 같은 목록에서 먼저 정의한 env 로 치환된다
+            - name: DATABASE_URL
+              value: postgresql+asyncpg://agent:$(POSTGRES_PASSWORD)@postgres:5432/agent
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef: { name: app-secrets, key: JWT_SECRET }
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef: { name: app-secrets, key: ENCRYPTION_KEY }
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef: { name: app-secrets, key: ANTHROPIC_API_KEY, optional: true }
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef: { name: app-secrets, key: OPENAI_API_KEY, optional: true }
+          readinessProbe: # 실패하면 Service 트래픽에서 빠진다
+            httpGet: { path: /health, port: 8000 }
+            periodSeconds: 5
+          livenessProbe: # 실패하면 컨테이너를 재시작한다
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: be
+spec:
+  selector:
+    app: be
+  ports:
+    - port: 8000
+      targetPort: 8000
