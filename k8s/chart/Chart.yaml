@@ -1,0 +1,6 @@
+apiVersion: v2
+name: myproject
+description: Postgres + 백엔드(be) + 프론트(fe) 전체 스택
+type: application
+# 차트(템플릿) 자체의 버전. 템플릿을 고치면 올린다. 앱 이미지 버전은 values 의 image.tag 로 따로 준다
+version: 0.1.0

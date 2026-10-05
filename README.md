@@ -44,8 +44,8 @@ docker compose down           # 종료 (데이터는 postgres-data 볼륨에 남
 
 ## 쿠버네티스 (kind 로컬 클러스터)
 
-쿠버네티스 배포 구성. `k8s/base` 는 클러스터에 묶이지 않은 공통 매니페스트이고, `overlays/local` 은 내 PC 의 kind 클러스터(노드 3대)용 설정이다.
-실제 클러스터에 올릴 때는 같은 base 에 그 환경용 overlay(이미지 레지스트리, 도메인, 스토리지, 비밀값)를 추가한다.
+쿠버네티스 배포 구성은 Helm 차트(`k8s/chart`)다. 차트의 `values.yaml` 은 클러스터에 묶이지 않은 기본값이고, `values-local.yaml` 은 내 PC 의 kind 클러스터(노드 3대)용 값이다.
+실제 클러스터에 올릴 때는 그 환경용 `values-<환경>.yaml`(이미지 레지스트리, 태그, 스토리지, Service 노출)을 추가하고 Secret `app-secrets` 를 만든다.
 
 ```bash
 ./k8s/up.sh     # 클러스터 생성(없으면) → 이미지 빌드·반입 → 배포 → http://localhost
@@ -53,14 +53,15 @@ docker compose down           # 종료 (데이터는 postgres-data 볼륨에 남
 ./k8s/down.sh   # 클러스터 삭제 (DB 데이터 포함)
 ```
 
-필요 도구: [kind](https://kind.sigs.k8s.io/), kubectl, docker buildx
+필요 도구: [kind](https://kind.sigs.k8s.io/), kubectl, [helm](https://helm.sh/) 3, docker buildx
 
 ```
 k8s/
 ├── kind-cluster.yaml     클러스터 정의 (NodePort 30080→localhost:80, 30081→localhost:8000)
-├── base/                 namespace, postgres(StatefulSet+PVC), be·fe(Deployment+Service)
-└── overlays/local/       ConfigMap·Secret 생성, 이미지 태그, NodePort 노출
-                          secret.env 는 up.sh 가 무작위 값으로 만든다 (커밋 금지)
+├── chart/                Helm 차트: postgres(StatefulSet+PVC), be·fe(Deployment+Service), ConfigMap
+│   └── values.yaml       기본값 (이미지 주소·태그, 리소스, be 설정)
+├── values-local.yaml     kind 용 값: 이미지 태그 dev, NodePort 노출
+└── secret.env            Secret app-secrets 의 값. up.sh 가 무작위 값으로 만든다 (커밋 금지)
 ```
 
 자주 쓰는 명령 (`--context` 를 항상 붙여 다른 클러스터에 실수로 적용하지 않는다):
@@ -70,7 +71,8 @@ alias k='kubectl --context kind-myproject -n myproject'
 k get pods -o wide                 # 어느 노드에 떴는지
 k logs -f deploy/be                # 로그
 k describe pod <이름>              # 안 뜰 때 이벤트 확인
-k rollout undo deploy/be           # 직전 버전으로 되돌리기
+helm --kube-context kind-myproject -n myproject history myproject    # 배포 이력
+helm --kube-context kind-myproject -n myproject rollback myproject   # 직전 리비전으로 되돌리기
 k delete pod postgres-0            # 지워도 같은 이름·같은 디스크로 다시 뜬다 (StatefulSet)
 ```
 

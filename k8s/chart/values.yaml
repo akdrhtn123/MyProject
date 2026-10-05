@@ -1,0 +1,54 @@
+# 클러스터에 묶이지 않은 기본값. 환경별 값은 values-<환경>.yaml 로 덮어쓴다 (예: ../values-local.yaml)
+#   helm upgrade --install myproject k8s/chart -n myproject -f k8s/values-local.yaml
+
+# 비공개 레지스트리(Harbor 등)에서 받을 때 pull 인증 Secret 이름. 예: [{ name: harbor-pull }]
+imagePullSecrets: []
+
+# DB 비밀번호·JWT 키 등이 든 Secret. 차트가 만들지 않는다 (up.sh 가 secret.env 로 만든다)
+secretName: app-secrets
+
+be:
+  # 시작할 때 DB 마이그레이션을 돌리므로 처음 배포는 1개로. 늘리는 건 배포가 끝난 뒤에
+  replicas: 1
+  image:
+    repository: myproject/be # Harbor 라면 harbor.example.com/myproject/be
+    tag: "" # 필수. 배포마다 다른 태그(버전·커밋 SHA)를 준다
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8000
+    nodePort: null # type: NodePort 일 때만
+  # ConfigMap be-config 로 들어가 환경변수가 된다. 값을 바꾸면 Pod 가 새로 뜬다 (checksum annotation)
+  config:
+    ENVIRONMENT: production
+    CORS_ORIGINS: "[]"
+    FRONTEND_URL: ""
+    DEFAULT_MODEL: fake:echo
+    CREDITS_ENFORCED: "true"
+    ALLOW_SIGNUP: "true"
+    ADMIN_EMAILS: "[]"
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+
+fe:
+  replicas: 1
+  image:
+    repository: myproject/fe
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+    nodePort: null
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+
+postgres:
+  image: postgres:17
+  storage: 1Gi
+  storageClassName: "" # 비우면 클러스터 기본 StorageClass
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }

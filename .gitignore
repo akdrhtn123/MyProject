@@ -16,4 +16,4 @@
 .env
 
 # kind 로컬 클러스터 비밀값
-/k8s/overlays/local/secret.env
+/k8s/secret.env

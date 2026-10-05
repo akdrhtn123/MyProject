@@ -9,10 +9,11 @@ K8S="$ROOT/k8s"
 CLUSTER=myproject
 CTX="kind-$CLUSTER"
 NS=myproject
-SECRET_ENV="$K8S/overlays/local/secret.env"
+SECRET_ENV="$K8S/secret.env"
+RELEASE=myproject
 kc() { kubectl --context "$CTX" -n "$NS" "$@"; }
 
-for t in docker kind kubectl openssl; do
+for t in docker kind kubectl helm openssl; do
   command -v "$t" >/dev/null || { echo "❌ $t 이(가) 없습니다."; exit 1; }
 done
 
@@ -52,9 +53,13 @@ kind load docker-image myproject/be:dev myproject/fe:dev --name "$CLUSTER" >/dev
 # ---- 배포 ----
 FIRST_DEPLOY=true
 kc get deployment/be >/dev/null 2>&1 && FIRST_DEPLOY=false
-echo "• 매니페스트 적용"
-kubectl --context "$CTX" apply -k "$K8S/overlays/local"
-# 재배포: 같은 태그(dev)로 이미지만 바뀐 경우에도 새 이미지로 다시 뜨게 한다.
+# 네임스페이스와 Secret 은 차트 밖에서 만든다 (비밀값을 values 나 Helm 릴리스 기록에 남기지 않는다)
+kubectl --context "$CTX" create namespace "$NS" --dry-run=client -o yaml | kubectl --context "$CTX" apply -f - >/dev/null
+kc create secret generic app-secrets --from-env-file="$SECRET_ENV" --dry-run=client -o yaml | kc apply -f - >/dev/null
+echo "• helm upgrade --install $RELEASE"
+helm upgrade --install "$RELEASE" "$K8S/chart" --kube-context "$CTX" -n "$NS" -f "$K8S/values-local.yaml"
+# 재배포: 같은 태그(dev)로 이미지만 바뀌면 helm 은 바뀐 게 없다고 보고 Pod 를 그대로 둔다.
+# Secret 도 차트 밖이라 값이 바뀌어도 Pod 가 모른다. 그래서 매번 다시 띄운다.
 # 첫 배포에 하면 be 가 두 개 겹쳐 떠서 DB 마이그레이션을 동시에 돌리다 하나가 죽는다
 $FIRST_DEPLOY || kc rollout restart deployment/be deployment/fe >/dev/null
 
@@ -70,4 +75,5 @@ cat <<MSG
    백엔드   http://localhost:8000/docs
    상태     kubectl --context $CTX -n $NS get pods -o wide
    로그     kubectl --context $CTX -n $NS logs -f deploy/be
+   이력     helm --kube-context $CTX -n $NS history $RELEASE
 MSG

@@ -3,6 +3,8 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
+  labels:
+    {{- include "myproject.labels" . | nindent 4 }}
 spec:
   serviceName: postgres
   replicas: 1
@@ -14,9 +16,13 @@ spec:
       labels:
         app: postgres
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: postgres
-          image: postgres:17
+          image: {{ .Values.postgres.image }}
           ports:
             - containerPort: 5432
           env:
@@ -27,7 +33,7 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: app-secrets
+                  name: {{ .Values.secretName }}
                   key: POSTGRES_PASSWORD
             # 볼륨 루트에 lost+found 가 있으면 initdb 가 거부하므로 하위 폴더를 쓴다
             - name: PGDATA
@@ -37,8 +43,7 @@ spec:
               command: ["pg_isready", "-U", "agent"]
             periodSeconds: 5
           resources:
-            requests: { cpu: 100m, memory: 256Mi }
-            limits: { memory: 512Mi }
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -47,15 +52,20 @@ spec:
         name: data
       spec:
         accessModes: ["ReadWriteOnce"]
+        {{- with .Values.postgres.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
         resources:
           requests:
-            storage: 1Gi
+            storage: {{ .Values.postgres.storage }}
 ---
 # headless Service: postgres-0.postgres 같은 고정 DNS 를 준다. 앱은 postgres:5432 로 접속
 apiVersion: v1
 kind: Service
 metadata:
   name: postgres
+  labels:
+    {{- include "myproject.labels" . | nindent 4 }}
 spec:
   clusterIP: None
   selector:
