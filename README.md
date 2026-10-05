@@ -26,6 +26,20 @@ tail -f logs/be.log logs/fe.log
 
 기본 모델이 `fake:echo` 라서 API 키 없이 동작한다. 실제 모델 키는 화면의 설정 → API 키, 또는 `BE-Agent/.env` 에 넣는다.
 
+## Docker (운영과 같은 이미지로 전체 실행)
+
+```bash
+cp .env.example .env          # POSTGRES_PASSWORD, JWT_SECRET 채우기 (openssl rand -hex 32)
+docker compose up -d --build  # Postgres + 백엔드 + 프론트 → http://localhost:3000
+docker compose logs -f be
+docker compose down           # 종료 (데이터는 postgres-data 볼륨에 남는다. 지우려면 down -v)
+```
+
+- 이미지는 각 저장소의 `Dockerfile` 로 만든다 (`BE-Agent/Dockerfile`, `FE-Agent/Dockerfile`).
+- 백엔드는 시작할 때 DB 마이그레이션을 적용한다. 프론트는 내부망(`http://be:8000`)으로 백엔드를 부른다.
+- `./start.sh` 개발 서버와 동시에 띄우면 포트가 겹친다. `.env` 의 `BE_PORT`·`FE_PORT` 를 바꾼다.
+- 로그인 쿠키는 운영 모드에서 `Secure` 라서, localhost 가 아닌 서버에 올릴 때는 HTTPS 가 필요하다.
+
 ## 규칙 — 반드시 준수 (사람·AI 도구 공통)
 
 이 저장소와 BE-Agent·FE-Agent 는 **공개 저장소**다.

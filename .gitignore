@@ -11,3 +11,6 @@
 .claude/settings.local.json
 .idea/
 .vscode/
+
+# docker compose 비밀값
+.env

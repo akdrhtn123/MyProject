@@ -1,0 +1,59 @@
+# 전체 스택(Postgres + 백엔드 + 프론트)을 운영과 같은 이미지로 띄운다.
+#   cp .env.example .env   # JWT_SECRET 등 채우기
+#   docker compose up -d --build
+#   http://localhost:3000
+# 로컬 개발(자동 리로드)은 ./start.sh 를 쓴다.
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?.env 에 POSTGRES_PASSWORD 를 설정하세요}
+      POSTGRES_DB: agent
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  be:
+    build: ./BE-Agent
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+asyncpg://agent:${POSTGRES_PASSWORD}@postgres:5432/agent
+      JWT_SECRET: ${JWT_SECRET:?.env 에 JWT_SECRET 을 설정하세요 (openssl rand -hex 32)}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      CORS_ORIGINS: '["${PUBLIC_URL:-http://localhost:3000}"]'
+      FRONTEND_URL: ${PUBLIC_URL:-http://localhost:3000}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-fake:echo}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CREDITS_ENFORCED: ${CREDITS_ENFORCED:-true}
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-[]}
+    ports:
+      - "${BE_PORT:-8000}:8000"  # 외부 API(/api/v1/ext)를 직접 부를 때. 화면은 프론트가 내부망으로 부른다
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  fe:
+    build:
+      context: ./FE-Agent
+      args:
+        NEXT_PUBLIC_EXTERNAL_API_URL: ${PUBLIC_API_URL:-http://localhost:8000}
+    environment:
+      BACKEND_URL: http://be:8000
+    ports:
+      - "${FE_PORT:-3000}:3000"
+    depends_on:
+      be:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
