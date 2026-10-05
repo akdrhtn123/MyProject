@@ -25,3 +25,13 @@ tail -f logs/be.log logs/fe.log
 ```
 
 기본 모델이 `fake:echo` 라서 API 키 없이 동작한다. 실제 모델 키는 화면의 설정 → API 키, 또는 `BE-Agent/.env` 에 넣는다.
+
+## 규칙 — 반드시 준수 (사람·AI 도구 공통)
+
+이 저장소와 BE-Agent·FE-Agent 는 **공개 저장소**다.
+
+- **이 개인 프로젝트만 push 한다.** 이 워크스페이스 밖의 다른 프로젝트 소스·문서·설정·스크립트는 커밋하거나 올리지 않는다.
+- **다른 프로젝트의 이름·내용을 언급하지 않는다.** 코드, 주석, 문서, 커밋 메시지, PR·이슈 어디에도 남기지 않는다. 참고했더라도 일반적인 표현으로만 쓴다.
+- **push 전에 확인한다.** `git diff --cached` 로 올라갈 내용에 다른 프로젝트 내용·내부 주소·비밀값(`.env`, API 키)이 없는지 본다.
+- **개인 git 계정으로 커밋한다.** 전역 git 설정이 다른 계정이면 저장소마다 로컬로 지정한다:
+  `git config user.name akdrhtn1 && git config user.email 184370766+ParkRhtn@users.noreply.github.com`
