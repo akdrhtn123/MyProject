@@ -59,12 +59,18 @@ kc create secret generic app-secrets --from-env-file="$SECRET_ENV" --dry-run=cli
 echo "• helm upgrade --install $RELEASE"
 helm upgrade --install "$RELEASE" "$K8S/chart" --kube-context "$CTX" -n "$NS" -f "$K8S/values-local.yaml"
 # 재배포: 같은 태그(dev)로 이미지만 바뀌면 helm 은 바뀐 게 없다고 보고 Pod 를 그대로 둔다.
-# Secret 도 차트 밖이라 값이 바뀌어도 Pod 가 모른다. 그래서 매번 다시 띄운다.
-# 첫 배포에 하면 be 가 두 개 겹쳐 떠서 DB 마이그레이션을 동시에 돌리다 하나가 죽는다
+# Secret 도 차트 밖이라 값이 바뀌어도 Pod 가 모른다. 그래서 매번 다시 띄운다 (첫 배포는 이미 새로 뜨므로 건너뛴다)
 $FIRST_DEPLOY || kc rollout restart deployment/be deployment/fe >/dev/null
 
 echo "• 준비될 때까지 대기"
 kc rollout status statefulset/postgres --timeout=180s
+# be 는 마이그레이션 Job 이 끝나야 뜬다. Job 이 실패하면 be 가 기다리기만 하므로 여기서 로그를 보여 주고 멈춘다
+MIGRATE_JOB="job/be-migrate-$(helm --kube-context "$CTX" -n "$NS" history "$RELEASE" --max 1 | awk 'END{print $1}')"
+if ! kc wait --for=condition=complete "$MIGRATE_JOB" --timeout=240s; then
+  echo "❌ DB 마이그레이션 실패. 로그:"
+  kc logs "$MIGRATE_JOB" --all-containers --tail=50 || true
+  exit 1
+fi
 kc rollout status deployment/be --timeout=240s
 kc rollout status deployment/fe --timeout=180s
 

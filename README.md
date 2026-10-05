@@ -77,4 +77,4 @@ k delete pod postgres-0            # 지워도 같은 이름·같은 디스크�
 ```
 
 - `./start.sh`, `docker compose`, kind 는 같은 포트(80/8000/3000)를 쓰니 하나만 켠다.
-- 백엔드는 시작할 때 DB 마이그레이션을 돌리므로 처음 배포는 1개로 띄운다. 늘리는 건 배포가 끝난 뒤에 (`k scale deploy/be --replicas=2`).
+- DB 마이그레이션은 배포마다 Job(`be-migrate-<리비전>`)이 한 번만 돌리고, be 는 그게 끝난 뒤에 뜬다. 그래서 be 를 여러 개로 늘려도 된다 (로컬은 2개). 로그: `k logs job/be-migrate-<리비전>`

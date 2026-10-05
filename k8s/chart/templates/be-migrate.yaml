@@ -1,0 +1,34 @@
+# DB 마이그레이션을 배포(helm upgrade)마다 한 번만 돌린다. be 를 여러 개 띄워도 서로 겹치지 않는다.
+# 이름에 리비전 번호가 붙어 배포마다 새 Job 이 생기고, 직전 Job 은 helm 이 지운다 (마지막 Job 의 로그는 남는다).
+# Helm hook 대신 일반 리소스로 둔 이유: 첫 설치 때 pre-install hook 은 같은 차트의 postgres 보다 먼저 돌아 DB 를 영영 못 만난다
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: be-migrate-{{ .Release.Revision }}
+  labels:
+    app: be-migrate
+    {{- include "myproject.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: be-migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-postgres
+          image: {{ .Values.postgres.image }}
+          command: ["sh", "-c", "until pg_isready -h postgres -U agent; do sleep 2; done"]
+      containers:
+        - name: migrate
+          image: {{ include "myproject.image" (list .Values.be.image "be") }}
+          imagePullPolicy: {{ .Values.be.image.pullPolicy }}
+          command: ["python", "-m", "be_agent.db.migrate"]
+          {{- include "myproject.beEnv" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.be.resources | nindent 12 }}

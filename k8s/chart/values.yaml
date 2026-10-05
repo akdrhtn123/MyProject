@@ -8,7 +8,7 @@ imagePullSecrets: []
 secretName: app-secrets
 
 be:
-  # 시작할 때 DB 마이그레이션을 돌리므로 처음 배포는 1개로. 늘리는 건 배포가 끝난 뒤에
+  # 마이그레이션은 Job 이 따로 한 번만 돌리므로 여러 개로 늘려도 된다
   replicas: 1
   image:
     repository: myproject/be # Harbor 라면 harbor.example.com/myproject/be

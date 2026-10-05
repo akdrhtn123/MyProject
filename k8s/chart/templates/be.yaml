@@ -8,6 +8,8 @@ data:
   {{- range $k, $v := .Values.be.config }}
   {{ $k }}: {{ $v | toString | quote }}
   {{- end }}
+  # 서버 여러 개가 동시에 마이그레이션하지 않도록 끈다 (Job 이 한다)
+  MIGRATE_ON_STARTUP: "false"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -32,39 +34,20 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      # k8s 에는 depends_on 이 없다. DB 가 받을 준비가 될 때까지 기다렸다가 앱을 띄운다
+      # 마이그레이션은 Job(be-migrate.yaml)이 한 번만 돌린다. 서버는 DB 가 이 이미지의 최신 스키마가 될 때까지 기다렸다가 뜬다
       initContainers:
-        - name: wait-postgres
-          image: {{ .Values.postgres.image }}
-          command: ["sh", "-c", "until pg_isready -h postgres -U agent; do sleep 2; done"]
+        - name: wait-migration
+          image: {{ include "myproject.image" (list .Values.be.image "be") }}
+          imagePullPolicy: {{ .Values.be.image.pullPolicy }}
+          command: ["sh", "-c", "until python -m be_agent.db.migrate --check; do sleep 3; done"]
+          {{- include "myproject.beEnv" . | nindent 10 }}
       containers:
         - name: be
           image: {{ include "myproject.image" (list .Values.be.image "be") }}
           imagePullPolicy: {{ .Values.be.image.pullPolicy }}
           ports:
             - containerPort: 8000
-          envFrom:
-            - configMapRef:
-                name: be-config
-          env:
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef: { name: {{ .Values.secretName }}, key: POSTGRES_PASSWORD }
-            # $(VAR) 는 같은 목록에서 먼저 정의한 env 로 치환된다
-            - name: DATABASE_URL
-              value: postgresql+asyncpg://agent:$(POSTGRES_PASSWORD)@postgres:5432/agent
-            - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef: { name: {{ .Values.secretName }}, key: JWT_SECRET }
-            - name: ENCRYPTION_KEY
-              valueFrom:
-                secretKeyRef: { name: {{ .Values.secretName }}, key: ENCRYPTION_KEY }
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef: { name: {{ .Values.secretName }}, key: ANTHROPIC_API_KEY, optional: true }
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef: { name: {{ .Values.secretName }}, key: OPENAI_API_KEY, optional: true }
+          {{- include "myproject.beEnv" . | nindent 10 }}
           readinessProbe: # 실패하면 Service 트래픽에서 빠진다
             httpGet: { path: /health, port: 8000 }
             periodSeconds: 5

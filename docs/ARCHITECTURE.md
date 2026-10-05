@@ -159,7 +159,8 @@ flowchart TB
 
             subgraph workers["worker 노드 2대 (스케줄러가 배치)"]
                 fe["Deployment fe<br/>Pod"]
-                be["Deployment be<br/>Pod<br/>initContainer: DB 대기"]
+                job["Job be-migrate-리비전<br/>마이그레이션 1회"]
+                be["Deployment be<br/>Pod × 2<br/>initContainer: 마이그레이션 완료 대기"]
                 pg[("StatefulSet postgres<br/>Pod postgres-0")]
                 pvc[/"PVC data-postgres-0 · 1Gi"/]
             end
@@ -172,7 +173,9 @@ flowchart TB
     np1 --> svcfe --> fe
     np2 --> svcbe --> be
     fe -->|"http://be:8000"| svcbe
+    job --> svcpg
     be --> svcpg --> pg
+    job -.->|"끝나야 뜬다"| be
     pg --- pvc
     cm -.-> be
     sec -.-> be & pg
@@ -181,6 +184,7 @@ flowchart TB
 | 리소스 | 하는 일 |
 | --- | --- |
 | Deployment (be, fe) | 지정한 개수의 Pod 를 유지. 죽으면 다시 띄우고, 이미지가 바뀌면 롤링 업데이트 |
+| Job (be-migrate) | 배포(helm upgrade)마다 DB 마이그레이션을 한 번만 돌린다. be 는 `MIGRATE_ON_STARTUP=false` 로 직접 하지 않고, DB 가 최신 스키마가 될 때까지 initContainer 에서 기다린다 |
 | StatefulSet (postgres) | Pod 이름(`postgres-0`)과 디스크(PVC)를 고정. Pod 를 지워도 같은 데이터로 다시 뜬다 |
 | Service | Pod 앞의 고정 주소 · DNS 이름(`be`, `fe`, `postgres`). NodePort 는 노드 포트로 외부에 연다 |
 | ConfigMap / Secret | 설정과 비밀값을 환경변수로 넣는다. ConfigMap 은 내용 해시(`checksum/config`)를 Pod 에 붙여 값이 바뀌면 새로 뜬다. Secret 은 차트 밖에서 만든다 |
@@ -202,7 +206,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    a["클러스터 생성<br/>(없을 때만)"] --> b["secret.env 생성<br/>(없을 때만)"] --> c["docker build<br/>be · fe"] --> d["kind load<br/>노드로 이미지 반입"] --> s["Secret app-secrets<br/>secret.env 로 생성"] --> e["helm upgrade --install<br/>chart + values-local"] --> f["rollout status<br/>준비될 때까지 대기"]
+    a["클러스터 생성<br/>(없을 때만)"] --> b["secret.env 생성<br/>(없을 때만)"] --> c["docker build<br/>be · fe"] --> d["kind load<br/>노드로 이미지 반입"] --> s["Secret app-secrets<br/>secret.env 로 생성"] --> e["helm upgrade --install<br/>chart + values-local"] --> j["마이그레이션 Job<br/>완료 대기 (실패 시 로그)"] --> f["rollout status<br/>준비될 때까지 대기"]
 ```
 
 ```
@@ -238,5 +242,4 @@ CPU limit 은 두지 않는다 (순간 부하에 스로틀링 방지). 메모리
 ## 6. 다음 단계
 
 - **Gateway API**: `localhost` 하나에서 `/api/v1` → be, 나머지 → fe 로 나눠 보내기 (ingress-nginx 는 2026-03 개발 종료)
-- **마이그레이션 Job**: be 를 여러 개로 늘려도 마이그레이션이 한 번만 돌게 분리
 - **Skaffold**: 코드 수정 → 빌드 → 재배포 자동화

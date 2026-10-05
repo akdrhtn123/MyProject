@@ -22,3 +22,29 @@ ports:
     nodePort: {{ .nodePort }}
     {{- end }}
 {{- end }}
+
+{{/* be 서버와 마이그레이션 Job 이 같이 쓰는 환경변수 (같은 설정으로 같은 DB 에 붙어야 한다) */}}
+{{- define "myproject.beEnv" -}}
+envFrom:
+  - configMapRef:
+      name: be-config
+env:
+  - name: POSTGRES_PASSWORD
+    valueFrom:
+      secretKeyRef: { name: {{ .Values.secretName }}, key: POSTGRES_PASSWORD }
+  # $(VAR) 는 같은 목록에서 먼저 정의한 env 로 치환된다
+  - name: DATABASE_URL
+    value: postgresql+asyncpg://agent:$(POSTGRES_PASSWORD)@postgres:5432/agent
+  - name: JWT_SECRET
+    valueFrom:
+      secretKeyRef: { name: {{ .Values.secretName }}, key: JWT_SECRET }
+  - name: ENCRYPTION_KEY
+    valueFrom:
+      secretKeyRef: { name: {{ .Values.secretName }}, key: ENCRYPTION_KEY }
+  - name: ANTHROPIC_API_KEY
+    valueFrom:
+      secretKeyRef: { name: {{ .Values.secretName }}, key: ANTHROPIC_API_KEY, optional: true }
+  - name: OPENAI_API_KEY
+    valueFrom:
+      secretKeyRef: { name: {{ .Values.secretName }}, key: OPENAI_API_KEY, optional: true }
+{{- end }}
