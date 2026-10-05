@@ -4,14 +4,14 @@
 
 | 폴더 | 내용 | 저장소 |
 | --- | --- | --- |
-| `BE-Agent/` | 백엔드 (uv · FastAPI · LangGraph), :8000 | https://github.com/ParkRhtn/BE-Agent |
-| `FE-Agent/` | 프론트 (Next.js · pnpm), :3000 | https://github.com/ParkRhtn/FE-Agent |
+| `BE-Agent/` | 백엔드 (uv · FastAPI · LangGraph), :8000 | https://github.com/akdrhtn123/BE-Agent |
+| `FE-Agent/` | 프론트 (Next.js · pnpm), :3000 | https://github.com/akdrhtn123/FE-Agent |
 
 ## 셋업
 
 ```bash
-git clone https://github.com/ParkRhtn/BE-Agent.git
-git clone https://github.com/ParkRhtn/FE-Agent.git
+git clone https://github.com/akdrhtn123/BE-Agent.git
+git clone https://github.com/akdrhtn123/FE-Agent.git
 ```
 
 필요 도구: [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`), Node 22+, pnpm
