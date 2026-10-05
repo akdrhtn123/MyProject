@@ -1,16 +1,15 @@
 # 로컬 kind 클러스터: control-plane 1 + worker 2
 # NodePort 는 모든 노드에서 응답하므로 control-plane 의 포트만 호스트에 연결하면 된다.
+# 들어오는 길은 하나: localhost:80 → NodePort 30080 → Envoy(Gateway) → be / fe
+# 포트 연결은 클러스터를 만들 때만 적용된다. 바꾸면 ./k8s/down.sh 후 다시 up.sh
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: myproject
 nodes:
   - role: control-plane
     extraPortMappings:
-      - containerPort: 30080 # fe (NodePort)
+      - containerPort: 30080 # Envoy (Gateway) NodePort — kind-gateway.yaml
         hostPort: 80
-        listenAddress: "127.0.0.1"
-      - containerPort: 30081 # be (NodePort)
-        hostPort: 8000
         listenAddress: "127.0.0.1"
   - role: worker
   - role: worker

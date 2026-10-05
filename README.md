@@ -45,7 +45,9 @@ docker compose down           # 종료 (데이터는 postgres-data 볼륨에 남
 ## 쿠버네티스 (kind 로컬 클러스터)
 
 쿠버네티스 배포 구성은 Helm 차트(`k8s/chart`)다. 차트의 `values.yaml` 은 클러스터에 묶이지 않은 기본값이고, `values-local.yaml` 은 내 PC 의 kind 클러스터(노드 3대)용 값이다.
-실제 클러스터에 올릴 때는 그 환경용 `values-<환경>.yaml`(이미지 레지스트리, 태그, 스토리지, Service 노출)을 추가하고 Secret `app-secrets` 를 만든다.
+실제 클러스터에 올릴 때는 그 환경용 `values-<환경>.yaml`(이미지 레지스트리, 태그, 스토리지, Gateway 클래스·도메인·TLS)을 추가하고 Secret `app-secrets` 를 만든다.
+
+들어오는 길은 Gateway(Gateway API, 로컬은 Envoy Gateway) 하나다. `http://localhost` 에서 `/api/v1` · `/docs` 는 백엔드로, 나머지는 프론트로 나눠 보낸다.
 
 ```bash
 ./k8s/up.sh     # 클러스터 생성(없으면) → 이미지 빌드·반입 → 배포 → http://localhost
@@ -53,14 +55,15 @@ docker compose down           # 종료 (데이터는 postgres-data 볼륨에 남
 ./k8s/down.sh   # 클러스터 삭제 (DB 데이터 포함)
 ```
 
-필요 도구: [kind](https://kind.sigs.k8s.io/), kubectl, [helm](https://helm.sh/) 3, docker buildx
+필요 도구: [kind](https://kind.sigs.k8s.io/), kubectl, [helm](https://helm.sh/) 3, docker buildx. Envoy Gateway 는 up.sh 가 처음 한 번 설치한다.
 
 ```
 k8s/
-├── kind-cluster.yaml     클러스터 정의 (NodePort 30080→localhost:80, 30081→localhost:8000)
-├── chart/                Helm 차트: postgres(StatefulSet+PVC), be·fe(Deployment+Service), ConfigMap
-│   └── values.yaml       기본값 (이미지 주소·태그, 리소스, be 설정)
-├── values-local.yaml     kind 용 값: 이미지 태그 dev, NodePort 노출
+├── kind-cluster.yaml     클러스터 정의 (NodePort 30080 → localhost:80)
+├── kind-gateway.yaml     kind 용 GatewayClass envoy (Envoy 를 NodePort 30080 으로)
+├── chart/                Helm 차트: postgres(StatefulSet+PVC), be·fe(Deployment+Service), 마이그레이션 Job, Gateway+HTTPRoute
+│   └── values.yaml       기본값 (이미지 주소·태그, 리소스, be 설정, gateway)
+├── values-local.yaml     kind 용 값: 이미지 태그 dev, be 2개, gateway 켜기
 └── secret.env            Secret app-secrets 의 값. up.sh 가 무작위 값으로 만든다 (커밋 금지)
 ```
 
@@ -77,4 +80,5 @@ k delete pod postgres-0            # 지워도 같은 이름·같은 디스크�
 ```
 
 - `./start.sh`, `docker compose`, kind 는 같은 포트(80/8000/3000)를 쓰니 하나만 켠다.
+- kind 에서 백엔드는 `http://localhost/docs`, 외부 API 는 `http://localhost/api/v1/ext/...` 다 (`:8000` 은 열지 않는다).
 - DB 마이그레이션은 배포마다 Job(`be-migrate-<리비전>`)이 한 번만 돌리고, be 는 그게 끝난 뒤에 뜬다. 그래서 be 를 여러 개로 늘려도 된다 (로컬은 2개). 로그: `k logs job/be-migrate-<리비전>`

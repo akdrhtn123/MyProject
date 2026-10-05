@@ -25,8 +25,8 @@ WSL2 (Ubuntu) 기준. 확인한 버전 (2026-10).
 | 포트 | 쓰는 곳 |
 | --- | --- |
 | 3000 | 프론트 (개발 서버 · compose) |
-| 8000 | 백엔드 (세 방식 모두) |
-| 80 | 프론트 (kind) |
+| 8000 | 백엔드 (개발 서버 · compose) |
+| 80 | kind 의 Gateway (`/api/v1` · `/docs` → 백엔드, 나머지 → 프론트) |
 
 | 설정 파일 | 쓰는 곳 | 커밋 |
 | --- | --- | --- |
@@ -107,7 +107,7 @@ flowchart TB
 | 끄기 | `./stop.sh` | `docker compose down` | `./k8s/down.sh` (삭제) |
 | 잠깐 멈춤 | — | `docker compose stop` | `docker stop myproject-control-plane myproject-worker myproject-worker2` |
 | 화면 | http://localhost:3000 | http://localhost:3000 | http://localhost |
-| 백엔드 | http://localhost:8000 | http://localhost:8000 | http://localhost:8000 |
+| 백엔드 | http://localhost:8000 | http://localhost:8000 | http://localhost/api/v1 (`/docs`) |
 | DB | SQLite (`BE-Agent/data/`) | Postgres (볼륨 `postgres-data`) | Postgres (StatefulSet + PVC) |
 | 설정 | `BE-Agent/.env`, `FE-Agent/.env.local` | 루트 `.env` | `k8s/values-local.yaml`, `k8s/secret.env` |
 
@@ -143,15 +143,21 @@ kind 는 Docker 컨테이너를 쿠버네티스 노드로 쓴다. `docker ps` �
 
 ```mermaid
 flowchart TB
-    user([브라우저]) -->|localhost:80| np1
-    ext([외부 서비스]) -->|localhost:8000| np2
+    user([브라우저]) -->|"localhost:80"| np
+    ext([외부 서비스]) -->|"localhost/api/v1/ext"| np
 
     subgraph docker["Docker (내 PC)"]
         subgraph cluster["kind 클러스터 myproject · 네임스페이스 myproject · Helm 릴리스 myproject"]
             subgraph cp["myproject-control-plane"]
-                np1["NodePort 30080"]
-                np2["NodePort 30081"]
+                np["NodePort 30080"]
             end
+
+            subgraph egns["네임스페이스 envoy-gateway-system (up.sh 가 설치)"]
+                envoy["Envoy 프록시<br/>GatewayClass envoy"]
+            end
+
+            gw["Gateway myproject :80"]
+            route["HTTPRoute myproject<br/>/api/v1 · /docs → be<br/>나머지 → fe"]
 
             svcfe["Service fe :3000"]
             svcbe["Service be :8000"]
@@ -170,8 +176,11 @@ flowchart TB
         end
     end
 
-    np1 --> svcfe --> fe
-    np2 --> svcbe --> be
+    np --> envoy
+    gw -.->|"설정"| envoy
+    route -.-> gw
+    envoy -->|"/api/v1 · /docs"| svcbe --> be
+    envoy -->|"그 외"| svcfe --> fe
     fe -->|"http://be:8000"| svcbe
     job --> svcpg
     be --> svcpg --> pg
@@ -186,7 +195,8 @@ flowchart TB
 | Deployment (be, fe) | 지정한 개수의 Pod 를 유지. 죽으면 다시 띄우고, 이미지가 바뀌면 롤링 업데이트 |
 | Job (be-migrate) | 배포(helm upgrade)마다 DB 마이그레이션을 한 번만 돌린다. be 는 `MIGRATE_ON_STARTUP=false` 로 직접 하지 않고, DB 가 최신 스키마가 될 때까지 initContainer 에서 기다린다 |
 | StatefulSet (postgres) | Pod 이름(`postgres-0`)과 디스크(PVC)를 고정. Pod 를 지워도 같은 데이터로 다시 뜬다 |
-| Service | Pod 앞의 고정 주소 · DNS 이름(`be`, `fe`, `postgres`). NodePort 는 노드 포트로 외부에 연다 |
+| Service | Pod 앞의 고정 주소 · DNS 이름(`be`, `fe`, `postgres`). 모두 클러스터 내부용(ClusterIP) |
+| Gateway / HTTPRoute | 클러스터로 들어오는 유일한 입구. Gateway 는 "어느 포트·도메인으로 받나", HTTPRoute 는 "어느 경로를 어느 Service 로 보내나". 실제로 트래픽을 받는 건 컨트롤러(Envoy)다 |
 | ConfigMap / Secret | 설정과 비밀값을 환경변수로 넣는다. ConfigMap 은 내용 해시(`checksum/config`)를 Pod 에 붙여 값이 바뀌면 새로 뜬다. Secret 은 차트 밖에서 만든다 |
 | readiness / liveness | 준비 안 된 Pod 는 트래픽에서 빼고, 응답 없는 컨테이너는 재시작 |
 
@@ -206,14 +216,15 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    a["클러스터 생성<br/>(없을 때만)"] --> b["secret.env 생성<br/>(없을 때만)"] --> c["docker build<br/>be · fe"] --> d["kind load<br/>노드로 이미지 반입"] --> s["Secret app-secrets<br/>secret.env 로 생성"] --> e["helm upgrade --install<br/>chart + values-local"] --> j["마이그레이션 Job<br/>완료 대기 (실패 시 로그)"] --> f["rollout status<br/>준비될 때까지 대기"]
+    a["클러스터 생성<br/>(없을 때만)"] --> g["Envoy Gateway 설치<br/>(없을 때만)"] --> b["secret.env 생성<br/>(없을 때만)"] --> c["docker build<br/>be · fe"] --> d["kind load<br/>노드로 이미지 반입"] --> s["Secret app-secrets<br/>secret.env 로 생성"] --> e["helm upgrade --install<br/>chart + values-local"] --> j["마이그레이션 Job<br/>완료 대기 (실패 시 로그)"] --> f["rollout status<br/>준비될 때까지 대기"]
 ```
 
 ```
 k8s/
-├── kind-cluster.yaml        노드 3대, NodePort ↔ localhost 포트 연결
-├── chart/                   Helm 차트: postgres · be · fe · ConfigMap (values.yaml 이 기본값)
-├── values-local.yaml        kind 용 값: 이미지 태그(dev), NodePort 노출
+├── kind-cluster.yaml        노드 3대, NodePort 30080 ↔ localhost:80
+├── kind-gateway.yaml        GatewayClass envoy, Envoy 를 NodePort 30080 으로
+├── chart/                   Helm 차트: postgres · be · fe · 마이그레이션 Job · Gateway (values.yaml 이 기본값)
+├── values-local.yaml        kind 용 값: 이미지 태그(dev), be 2개, gateway 켜기
 ├── secret.env               Secret 값 (up.sh 가 생성, 커밋 금지)
 ├── up.sh                    생성 · 빌드 · 반입 · 배포 (다시 실행하면 재배포)
 └── down.sh                  클러스터 삭제
@@ -241,5 +252,5 @@ CPU limit 은 두지 않는다 (순간 부하에 스로틀링 방지). 메모리
 
 ## 6. 다음 단계
 
-- **Gateway API**: `localhost` 하나에서 `/api/v1` → be, 나머지 → fe 로 나눠 보내기 (ingress-nginx 는 2026-03 개발 종료)
+- **HTTPS 리다이렉트**: 실제 도메인에서 `gateway.tls.secretName` 을 켤 때 80 → 443 으로 돌리는 HTTPRoute 추가 (인증서는 cert-manager)
 - **Skaffold**: 코드 수정 → 빌드 → 재배포 자동화

@@ -11,6 +11,7 @@ CTX="kind-$CLUSTER"
 NS=myproject
 SECRET_ENV="$K8S/secret.env"
 RELEASE=myproject
+EG_VERSION=1.9.2 # Envoy Gateway (Gateway API 컨트롤러)
 kc() { kubectl --context "$CTX" -n "$NS" "$@"; }
 
 for t in docker kind kubectl helm openssl; do
@@ -21,7 +22,7 @@ done
 if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
   echo "• 클러스터 $CLUSTER 사용"
 else
-  for port in 80 8000; do
+  for port in 80; do
     if ss -ltn "sport = :$port" | grep -q LISTEN; then
       echo "❌ $port 포트를 이미 쓰고 있습니다. ./stop.sh 또는 docker compose down 으로 먼저 내려 주세요."
       exit 1
@@ -30,6 +31,14 @@ else
   echo "• 클러스터 생성 (control-plane 1 + worker 2)"
   kind create cluster --config "$K8S/kind-cluster.yaml"
 fi
+
+# ---- Gateway 컨트롤러 (클러스터에 한 번) ----
+if ! helm --kube-context "$CTX" -n envoy-gateway-system status eg >/dev/null 2>&1; then
+  echo "• Envoy Gateway $EG_VERSION 설치"
+  helm install eg oci://docker.io/envoyproxy/gateway-helm --version "$EG_VERSION" \
+    --kube-context "$CTX" -n envoy-gateway-system --create-namespace --wait --timeout 5m >/dev/null
+fi
+kubectl --context "$CTX" apply -f "$K8S/kind-gateway.yaml" >/dev/null
 
 # ---- 비밀값 (처음 한 번 무작위 생성) ----
 if [[ ! -f "$SECRET_ENV" ]]; then
@@ -46,7 +55,9 @@ fi
 # ---- 이미지 빌드 → 클러스터 노드에 직접 넣기 (레지스트리 없이) ----
 echo "• 이미지 빌드"
 docker build -q --provenance=false -t myproject/be:dev "$ROOT/BE-Agent" >/dev/null
-docker build -q --provenance=false -t myproject/fe:dev "$ROOT/FE-Agent" >/dev/null
+# 외부 API 주소도 Gateway 를 지나 같은 도메인 (/api/v1 → be)
+docker build -q --provenance=false --build-arg NEXT_PUBLIC_EXTERNAL_API_URL=http://localhost \
+  -t myproject/fe:dev "$ROOT/FE-Agent" >/dev/null
 echo "• kind 노드로 이미지 반입"
 kind load docker-image myproject/be:dev myproject/fe:dev --name "$CLUSTER" >/dev/null 2>&1
 
@@ -73,12 +84,13 @@ if ! kc wait --for=condition=complete "$MIGRATE_JOB" --timeout=240s; then
 fi
 kc rollout status deployment/be --timeout=240s
 kc rollout status deployment/fe --timeout=180s
+kc wait --for=condition=Programmed gateway/myproject --timeout=120s
 
 cat <<MSG
 
 ✅ 배포 완료
-   화면     http://localhost
-   백엔드   http://localhost:8000/docs
+   화면     http://localhost              (Gateway → fe)
+   백엔드   http://localhost/docs         (Gateway → be, 외부 API 는 /api/v1/ext)
    상태     kubectl --context $CTX -n $NS get pods -o wide
    로그     kubectl --context $CTX -n $NS logs -f deploy/be
    이력     helm --kube-context $CTX -n $NS history $RELEASE

@@ -1,0 +1,34 @@
+# 로컬 kind 용 Gateway API 설정 (클러스터 쪽). 앱 차트가 아니라 up.sh 가 Envoy Gateway 설치 뒤에 적용한다.
+# 실제 클러스터에서는 그 클러스터의 GatewayClass 를 쓰고, 차트 values 의 gateway.className 만 맞춘다.
+
+# Envoy 프록시의 Service 를 NodePort 30080 으로 연다 (kind-cluster.yaml 의 30080 → localhost:80 과 짝)
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: kind-nodeport
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: NodePort
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                - port: 80
+                  nodePort: 30080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: kind-nodeport
+    namespace: envoy-gateway-system

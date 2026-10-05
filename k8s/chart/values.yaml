@@ -45,6 +45,16 @@ fe:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 512Mi }
 
+# 도메인 하나로 받아 /api/v1 · /docs → be, 나머지 → fe (Gateway API). 컨트롤러는 클러스터에 따로 설치돼 있어야 한다
+gateway:
+  enabled: false
+  className: "" # 클러스터의 GatewayClass (kubectl get gatewayclass). kind 는 envoy
+  hostname: "" # 예: app.example.com. 비우면 모든 호스트
+  tls:
+    secretName: "" # 인증서 Secret(kubernetes.io/tls). 있으면 443 HTTPS 리스너를 더한다
+  # 클러스터에 공용 Gateway 가 이미 있으면 { name: ..., namespace: ... }. 그러면 Gateway 는 만들지 않고 HTTPRoute 만 붙인다
+  existing: {}
+
 postgres:
   image: postgres:17
   storage: 1Gi
